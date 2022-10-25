@@ -327,20 +327,43 @@ int pubsubSubscribePattern(client *c, robj *pattern) {
     list *clients;
     int retval = 0;
 
-    if (listSearchKey(c->pubsub_patterns,pattern) == NULL) {
+    /* Check if the pattern is a prefix (has a single star at the end). If yes, put it in the pubsub_prefixes radix tree.
+     * If not, put it in the pubsub_patterns list */
+    if (stringendswith(pattern->ptr,sdslen(pattern->ptr), '*')) {
+        // TODO: Handle if the pattern already exists
         retval = 1;
-        listAddNodeTail(c->pubsub_patterns,pattern);
-        incrRefCount(pattern);
-        /* Add the client to the pattern -> list of clients hash table */
-        de = dictFind(server.pubsub_patterns,pattern);
-        if (de == NULL) {
-            clients = listCreate();
-            dictAdd(server.pubsub_patterns,pattern,clients);
-            incrRefCount(pattern);
+
+        list *newClients = listCreate();
+        list *clients = NULL;
+
+        /* Omit the star at the end */
+        if (raxTryInsert(server.pubsub_prefixes,pattern->ptr,sdslen(pattern->ptr)-1,newClients,(void **) &clients) == 0) {
+            /* Already clients for this pattern */
+            listRelease(newClients);
         } else {
-            clients = dictGetVal(de);
+            /* No clients yet for this pattern. Make sure to keep the pattern around */
+            incrRefCount(pattern);
+            clients = newClients;
         }
+
+        /* Add the client to the list of clients for this prefix */
         listAddNodeTail(clients,c);
+    } else {
+        if (listSearchKey(c->pubsub_patterns,pattern) == NULL) {
+            retval = 1;
+            listAddNodeTail(c->pubsub_patterns,pattern);
+            incrRefCount(pattern);
+            /* Add the client to the pattern -> list of clients hash table */
+            de = dictFind(server.pubsub_patterns,pattern);
+            if (de == NULL) {
+                clients = listCreate();
+                dictAdd(server.pubsub_patterns,pattern,clients);
+                incrRefCount(pattern);
+            } else {
+                clients = dictGetVal(de);
+            }
+            listAddNodeTail(clients,c);
+        }
     }
     /* Notify the client */
     addReplyPubsubPatSubscribed(c,pattern);

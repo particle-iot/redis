@@ -190,6 +190,14 @@ int stringmatchlen_fuzz_test(void) {
     return total_matches;
 }
 
+int stringendswith(const char *string, int stringLen, char c) {
+    if (stringLen > 0 && string[stringLen - 1] == c) {
+        return 1;
+    } else {
+        return 0;
+    }
+}
+
 
 /* Convert a string representing an amount of memory into the number of
  * bytes, so for instance memtoull("1Gb") will return 1073741824 that is
