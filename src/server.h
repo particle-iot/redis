@@ -1856,6 +1856,7 @@ struct redisServer {
     /* Pubsub */
     dict *pubsub_channels;  /* Map channels to list of subscribed clients */
     dict *pubsub_patterns;  /* A dict of pubsub_patterns */
+    rax *pubsub_prefixes; /* A radix tree of pubsub patterns that are prefixes. Mutually exclusive with pubsub_patterns */
     int notify_keyspace_events; /* Events to propagate via Pub/Sub. This is an
                                    xor of NOTIFY_... flags. */
     dict *pubsubshard_channels;  /* Map shard channels to list of subscribed clients */
