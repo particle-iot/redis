@@ -1145,6 +1145,7 @@ typedef struct client {
     list *watched_keys;     /* Keys WATCHED for MULTI/EXEC CAS */
     dict *pubsub_channels;  /* channels a client is interested in (SUBSCRIBE) */
     list *pubsub_patterns;  /* patterns a client is interested in (SUBSCRIBE) */
+    rax *pubsub_prefixes;   /* radix tree of (SUBSCRIBE) patterns that are prefixes. Mutually exclusive with pubsub_patterns */
     dict *pubsubshard_channels;  /* shard level channels a client is interested in (SSUBSCRIBE) */
     sds peerid;             /* Cached peer ID. */
     sds sockname;           /* Cached connection target address. */

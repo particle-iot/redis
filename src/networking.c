@@ -194,6 +194,7 @@ client *createClient(connection *conn) {
     c->watched_keys = listCreate();
     c->pubsub_channels = dictCreate(&objectKeyPointerValueDictType);
     c->pubsub_patterns = listCreate();
+    c->pubsub_prefixes = raxNew();
     c->pubsubshard_channels = dictCreate(&objectKeyPointerValueDictType);
     c->peerid = NULL;
     c->sockname = NULL;
@@ -1617,6 +1618,7 @@ void freeClient(client *c) {
     pubsubUnsubscribeAllPatterns(c,0);
     dictRelease(c->pubsub_channels);
     listRelease(c->pubsub_patterns);
+    raxFree(c->pubsub_prefixes);
     dictRelease(c->pubsubshard_channels);
 
     /* Free data structures. */
