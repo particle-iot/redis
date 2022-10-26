@@ -223,6 +223,18 @@ int clientTotalPubSubSubscriptionCount(client *c) {
     return clientSubscriptionsCount(c) + clientShardSubscriptionsCount(c);
 }
 
+/* Add a star at the end of a channel prefix and return as a new robj.
+ * Caller is responsible for decrementing the reference count. */
+robj *patternFromPrefix(unsigned char *key, size_t key_len) {
+    size_t pattern_len = key_len + 1;
+    unsigned char *pattern_str = zmalloc(pattern_len);
+    memcpy(pattern_str, key, key_len);
+    pattern_str[pattern_len - 1] = '*';
+    robj *pattern = createStringObject((char*)pattern_str, pattern_len);
+    zfree(pattern_str);
+    return pattern;
+}
+
 /* Subscribe a client to a channel. Returns 1 if the operation succeeded, or
  * 0 if the client was already subscribed to that channel. */
 int pubsubSubscribeChannel(client *c, robj *channel, pubsubtype type) {
@@ -393,14 +405,14 @@ int pubsubUnsubscribePattern(client *c, robj *pattern, int notify) {
         unsigned char *prefix = pattern->ptr;
         size_t prefixLen = sdslen(pattern->ptr)-1; /* Omit the star at the end */
         if (raxRemove(c->pubsub_prefixes, prefix, prefixLen, NULL) == 1) {
-            clients = raxFind(server.pubsub_prefixes, prefix, prefixLen);
-            serverAssertWithInfo(c,NULL, clients != raxNotFound);
+            clients = raxFind(server.pubsub_prefixes,prefix,prefixLen);
+            serverAssertWithInfo(c,NULL,clients != raxNotFound);
             ln = listSearchKey(clients,c);
             serverAssertWithInfo(c,NULL,ln != NULL);
             listDelNode(clients,ln);
             if (listLength(clients) == 0) {
                 /* Remove the pattern from the server pubsub_prefixes */
-                raxRemove(server.pubsub_prefixes,prefix,prefixLen, NULL);
+                raxRemove(server.pubsub_prefixes,prefix,prefixLen,NULL);
             }
         }
     } else {
@@ -485,26 +497,18 @@ int pubsubUnsubscribeAllPatterns(client *c, int notify) {
     // TODO: make sure to declare all local variables at the start of the function (C compatibility rule)
 
     /* Unsubscribe from all the prefix patterns */
-    // TODO: Remove during code review: Code taken from cluster.c removeChannelsInSlot()
 
     /* Retrieve all the prefixes for the client. */
-    int prefixCount = raxSize(c->pubsub_prefixes);
-    robj **prefixes = zmalloc(sizeof(robj*)*prefixCount);
     raxIterator iter;
-    int j = 0;
 
     raxStart(&iter,c->pubsub_prefixes);
     raxSeek(&iter,"^",NULL,0);
     while(raxNext(&iter)) {
-        prefixes[j++] = (robj*)iter.key;
+        robj *pattern = patternFromPrefix(iter.key, iter.key_len);
+        pubsubUnsubscribePattern(c,pattern,notify);
+        decrRefCount(pattern);
     }
     raxStop(&iter);
-
-    for (j = 0; j < prefixCount; j++) {
-        count += pubsubUnsubscribePattern(c,prefixes[j],notify);
-    }
-
-    zfree(prefixes);
 
     /* Unsubscribe from all the other patterns */
     listRewind(c->pubsub_patterns,&li);
@@ -555,12 +559,7 @@ int pubsubPublishMessageInternal(robj *channel, robj *message, pubsubtype type) 
     /* Descend the prefix radix tree to find every level that is a partial match of the channel name. */
     while (raxDescendNext(&d)) {
         /* Regenerate the pattern with the star at the end */
-        size_t pattern_len = d.key_len + 1;
-        unsigned char *pattern_str = zmalloc(pattern_len);
-        memcpy(pattern_str, d.key, d.key_len);
-        pattern_str[pattern_len - 1] = '*';
-        robj *pattern = createStringObject((char*)pattern_str, pattern_len);
-        zfree(pattern_str);
+        robj *pattern = patternFromPrefix(d.key, d.key_len);
 
         /* Publish to each client */
         list *clients = (list *)d.data;
@@ -572,6 +571,7 @@ int pubsubPublishMessageInternal(robj *channel, robj *message, pubsubtype type) 
             updateClientMemUsage(c);
             receivers++;
         }
+        decrRefCount(pattern);
     }
     raxDescendStop(&d);
 
