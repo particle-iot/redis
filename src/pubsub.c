@@ -201,7 +201,7 @@ int serverPubsubShardSubscriptionCount() {
 
 /* Return the number of channels + patterns a client is subscribed to. */
 int clientSubscriptionsCount(client *c) {
-    return dictSize(c->pubsub_channels) + listLength(c->pubsub_patterns);
+    return dictSize(c->pubsub_channels) + listLength(c->pubsub_patterns) + raxSize(c->pubsub_prefixes);
 }
 
 /* Return the number of shard level channels a client is subscribed to. */
