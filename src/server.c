@@ -5963,7 +5963,7 @@ sds genRedisInfoString(dict *section_dict, int all_sections, int everything) {
             server.stat_keyspace_hits,
             server.stat_keyspace_misses,
             dictSize(server.pubsub_channels),
-            dictSize(server.pubsub_patterns) /* TODO: add number of patterns in pubsub_prefixes */,
+            dictSize(server.pubsub_patterns) /* TODO: add number of patterns in raxSize(server.pubsub_prefixes) */,
             dictSize(server.pubsubshard_channels),
             server.stat_fork_time,
             server.stat_total_forks,
