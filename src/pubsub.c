@@ -330,24 +330,29 @@ int pubsubSubscribePattern(client *c, robj *pattern) {
     /* Check if the pattern is a prefix (has a single star at the end). If yes, put it in the pubsub_prefixes radix tree.
      * If not, put it in the pubsub_patterns list */
     if (stringendswith(pattern->ptr,sdslen(pattern->ptr), '*')) {
-        // TODO: Handle if the pattern already exists
-        retval = 1;
-
-        list *newClients = listCreate();
-        list *clients = NULL;
-
-        /* Omit the star at the end */
-        if (raxTryInsert(server.pubsub_prefixes,pattern->ptr,sdslen(pattern->ptr)-1,newClients,(void **) &clients) == 0) {
-            /* Already clients for this pattern */
-            listRelease(newClients);
-        } else {
-            /* No clients yet for this pattern. Make sure to keep the pattern around */
+        unsigned char *prefix = pattern->ptr;
+        size_t prefixLen = sdslen(pattern->ptr)-1; /* Omit the star at the end */
+        /* Add the pattern to the client if it doesn't already exist */
+        if (raxTryInsert(c->pubsub_prefixes,prefix,prefixLen,NULL,NULL)) {
+            retval = 1;
             incrRefCount(pattern);
-            clients = newClients;
-        }
 
-        /* Add the client to the list of clients for this prefix */
-        listAddNodeTail(clients,c);
+            list *newClients = listCreate();
+            list *clients = NULL;
+
+            /* Check if the server already has clients for that prefix */            
+            if (raxTryInsert(server.pubsub_prefixes,pattern->ptr,sdslen(pattern->ptr)-1,newClients,(void **) &clients) == 0) {
+                /* Already clients for this pattern */
+                listRelease(newClients);
+            } else {
+                /* No clients yet for this pattern. Make sure to keep the pattern around */
+                incrRefCount(pattern);
+                clients = newClients;
+            }
+
+            /* Add the client to the list of clients for this prefix */
+            listAddNodeTail(clients,c);
+        }
     } else {
         if (listSearchKey(c->pubsub_patterns,pattern) == NULL) {
             retval = 1;
