@@ -535,7 +535,6 @@ int pubsubUnsubscribeAllPatterns(client *c, int notify) {
         }
         dictReleaseIterator(di);
     }
-    // TODO: add pubsub_prefixes to unsubscribe all
 
     /* We were subscribed to nothing? Still reply to the client. */
     if (notify && count == 0) addReplyPubsubPatUnsubscribed(c,NULL);
