@@ -241,6 +241,12 @@ int clientTotalPubSubSubscriptionCount(client *c) {
     return clientSubscriptionsCount(c) + clientShardSubscriptionsCount(c);
 }
 
+/* Returns 1 if a pattern is a prefix (at least 1 character with a single star at the end), 0 otherwise */
+int isPatternPrefix(robj *pattern) {
+    size_t pattern_len = sdslen(pattern->ptr);
+    return pattern_len > 1 && stringendswith(pattern->ptr,pattern_len,'*');
+}
+
 /* Add a star at the end of a channel prefix and return as a new robj.
  * Caller is responsible for decrementing the reference count. */
 robj *patternFromPrefix(unsigned char *key, size_t key_len) {
@@ -360,7 +366,7 @@ int pubsubSubscribePattern(client *c, robj *pattern) {
 
     /* Check if the pattern is a prefix (has a single star at the end). If yes, put it in the pubsub_prefixes radix tree.
      * If not, put it in the pubsub_patterns list */
-    if (stringendswith(pattern->ptr,sdslen(pattern->ptr),'*')) {
+    if (isPatternPrefix(pattern)) {
         unsigned char *prefix = pattern->ptr;
         size_t prefixLen = sdslen(pattern->ptr)-1; /* Omit the star at the end */
         /* Add the pattern to the client if it doesn't already exist */
@@ -418,7 +424,7 @@ int pubsubUnsubscribePattern(client *c, robj *pattern, int notify) {
 
     /* Check if the pattern is a prefix (has a single star at the end). If yes, remove it in the pubsub_prefixes radix tree.
      * If not, remove it in the pubsub_patterns dictionary */
-    if (stringendswith(pattern->ptr,sdslen(pattern->ptr),'*')) {
+    if (isPatternPrefix(pattern)) {
         unsigned char *prefix = pattern->ptr;
         size_t prefixLen = sdslen(pattern->ptr)-1; /* Omit the star at the end */
         if (raxRemove(c->pubsub_prefixes, prefix, prefixLen, NULL) == 1) {
@@ -760,7 +766,7 @@ NULL
         }
     } else if (!strcasecmp(c->argv[1]->ptr,"numpat") && c->argc == 2) {
         /* PUBSUB NUMPAT */
-        addReplyLongLong(c,dictSize(server.pubsub_patterns));
+        addReplyLongLong(c,dictSize(server.pubsub_patterns)+raxSize(server.pubsub_prefixes));
     } else if (!strcasecmp(c->argv[1]->ptr,"shardchannels") &&
         (c->argc == 2 || c->argc == 3)) 
     {
