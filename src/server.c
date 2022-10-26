@@ -5667,6 +5667,7 @@ sds genRedisInfoString(dict *section_dict, int all_sections, int everything) {
             "keyspace_misses:%lld\r\n"
             "pubsub_channels:%ld\r\n"
             "pubsub_patterns:%lu\r\n"
+            "pubsub_prefixes:%lu\r\n"
             "pubsubshard_channels:%lu\r\n"
             "latest_fork_usec:%lld\r\n"
             "total_forks:%lld\r\n"
@@ -5716,7 +5717,8 @@ sds genRedisInfoString(dict *section_dict, int all_sections, int everything) {
             server.stat_keyspace_hits,
             server.stat_keyspace_misses,
             dictSize(server.pubsub_channels),
-            dictSize(server.pubsub_patterns) /* TODO: add number of patterns in raxSize(server.pubsub_prefixes) */,
+            dictSize(server.pubsub_patterns),
+            raxSize(server.pubsub_prefixes),
             dictSize(server.pubsubshard_channels),
             server.stat_fork_time,
             server.stat_total_forks,
