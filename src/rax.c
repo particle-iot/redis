@@ -1844,7 +1844,6 @@ void raxDescendStart(raxDescend *d, rax *rt, unsigned char *pattern, size_t len)
  * there are no more nodes matching the pattern.
  * This is a modified version of raxLowWalk() that returns after every step. */
 int raxDescendNext(raxDescend *d) {
-    int found = 0;
     raxNode *h = d->node;
     unsigned char *s = d->pattern;
     size_t len = d->pattern_len;
@@ -1859,47 +1858,42 @@ int raxDescendNext(raxDescend *d) {
             for (j = 0; j < h->size && i < len; j++, i++) {
                 if (v[j] != s[i]) break;
             }
-            if (j == h-> size) {
-                found = 1;
-            }
+            /* If pattern doesn't match anymore, end the descent */
+            if (j != h->size) break;
         } else {
             /* Find which character matches */
             for (j = 0; j < h->size; j++) {
                 if (v[j] == s[i]) break;
             }
-            if (j < h->size) {
-                found = 1;
-            };
+            /* If pattern doesn't match anymore, end the descent */
+            if (j == h->size) break;
         }
 
-        if (found) {
-            /* Add the characters to the current key */
-            if (h->iscompr) {
-                raxDescendAddChars(d, v, h->size);
-            } else {
-                raxDescendAddChars(d, &v[j], 1);
-            }
-            i = d->key_len;
-
-            /* Get the node where to continue the descent */
-            raxNode **children = raxNodeFirstChildPtr(h);
-            if (h->iscompr) j = 0; /* Compressed node only child is at index 0. */
-            memcpy(&h,children+j,sizeof(d->node));
-
-            /* If there is data in the child node, return it. After deletion, some nodes
-             * remain in the tree but don't have data associated with them. */
-            if (h->iskey) {
-                /* Save the node data for the caller. Note that the actual data is in the child node */
-                d->data = raxGetData(h);
-                d->node = h;
-            } else {
-                /* Continue the descent */
-                found = 0;
-            }
+        /* Add the characters to the current key */
+        if (h->iscompr) {
+            raxDescendAddChars(d, v, h->size);
+        } else {
+            raxDescendAddChars(d, &v[j], 1);
         }
+        i = d->key_len;
+
+        /* Get the node where to continue the descent */
+        raxNode **children = raxNodeFirstChildPtr(h);
+        if (h->iscompr) j = 0; /* Compressed node only child is at index 0. */
+        memcpy(&h,children+j,sizeof(d->node));
+
+        /* If there is data in the child node, return it. After deletion, some nodes
+            * remain in the tree but don't have data associated with them. */
+        if (h->iskey) {
+            /* Save the node data for the caller. Note that the actual data is in the child node */
+            d->data = raxGetData(h);
+            d->node = h;
+            return 1;
+        }
+        /* Continue the descent */
     }
     
-    return found;
+    return 0;
 }
 
 /* Free the descent struct */
