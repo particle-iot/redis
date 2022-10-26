@@ -570,7 +570,30 @@ int pubsubPublishMessageInternal(robj *channel, robj *message, pubsubtype type) 
         return receivers;
     }
 
-    /* Send to clients listening to matching channels */
+    /* Send to clients listening to channels matching prefix patterns */
+    raxDescend d;
+    raxDescendStart(&d,server.pubsub_prefixes,channel->ptr,sdslen(channel->ptr));
+    /* Descend the prefix radix tree to find every level that is a partial match of the channel name. */
+    while (raxDescendNext(&d)) {
+        /* Regenerate the pattern with the star at the end */
+        size_t pattern_len = d.key_len + 1;
+        unsigned char *pattern_str = zmalloc(pattern_len);
+        memcpy(pattern_str, d.key, d.key_len);
+        pattern_str[pattern_len - 1] = '*';
+        robj *pattern = createStringObject((char*)pattern_str, pattern_len);
+        list *clients = (list *)d.data;
+
+        listRewind(clients,&li);
+        while ((ln = listNext(&li)) != NULL) {
+            client *c = listNodeValue(ln);
+            addReplyPubsubPatMessage(c,pattern,channel,message);
+            updateClientMemUsageAndBucket(c);
+            receivers++;
+        }
+    }
+    raxDescendStop(&d);
+
+    /* Send to clients listening to channels matching other patterns */
     di = dictGetIterator(server.pubsub_patterns);
     if (di) {
         channel = getDecodedObject(channel);
