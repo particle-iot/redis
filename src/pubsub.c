@@ -581,6 +581,9 @@ int pubsubPublishMessageInternal(robj *channel, robj *message, pubsubtype type) 
         memcpy(pattern_str, d.key, d.key_len);
         pattern_str[pattern_len - 1] = '*';
         robj *pattern = createStringObject((char*)pattern_str, pattern_len);
+        zfree(pattern_str);
+
+        /* Publish to each client */
         list *clients = (list *)d.data;
 
         listRewind(clients,&li);

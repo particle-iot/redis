@@ -1873,11 +1873,6 @@ int raxDescendNext(raxDescend *d) {
         }
 
         if (found) {
-            /* Copy the node where to continue the descent */
-            raxNode **children = raxNodeFirstChildPtr(h);
-            if (h->iscompr) j = 0; /* Compressed node only child is at index 0. */
-            memcpy(&d->node,children+j,sizeof(d->node));
-
             /* Add the characters to the current key */
             if (h->iscompr) {
                 raxDescendAddChars(d, v, h->size);
@@ -1885,8 +1880,13 @@ int raxDescendNext(raxDescend *d) {
                 raxDescendAddChars(d, &v[j], 1);
             }
 
-            /* Save the node data for the caller */
-            d->data = raxGetData(h);
+            /* Copy the node where to continue the descent */
+            raxNode **children = raxNodeFirstChildPtr(h);
+            if (h->iscompr) j = 0; /* Compressed node only child is at index 0. */
+            memcpy(&d->node,children+j,sizeof(d->node));
+
+            /* Save the node data for the caller. Note that the actual data is in the child node */
+            d->data = raxGetData(d->node);
         }
     }
     
