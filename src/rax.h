@@ -185,6 +185,20 @@ typedef struct raxIterator {
     raxNodeCallback node_cb; /* Optional node callback. Normally set to NULL. */
 } raxIterator;
 
+#define RAX_DESCEND_STATIC_LEN 128
+
+typedef struct raxDescend {
+    rax *rt;                /* Radix tree we are descending through. */
+    unsigned char *pattern; /* The pattern to find. */
+    unsigned char *key;     /* The current string. */
+    void *data;             /* Data associated to this key. */
+    size_t pattern_len;     /* Length of the pattern to find. */
+    size_t key_len;         /* Current key length. */
+    size_t key_max;         /* Max key len the current key buffer can hold. */
+    unsigned char key_static_string[RAX_DESCEND_STATIC_LEN];
+    raxNode *node;          /* Node where to continue the descent */
+} raxDescend;
+
 /* A special pointer returned for not found items. */
 extern void *raxNotFound;
 
@@ -204,6 +218,9 @@ int raxRandomWalk(raxIterator *it, size_t steps);
 int raxCompare(raxIterator *iter, const char *op, unsigned char *key, size_t key_len);
 void raxStop(raxIterator *it);
 int raxEOF(raxIterator *it);
+void raxDescendStart(raxDescend *d, rax *rt, unsigned char *pattern, size_t len);
+int raxDescendNext(raxDescend *d);
+void raxDescendStop(raxDescend *d);
 void raxShow(rax *rax);
 uint64_t raxSize(rax *rax);
 unsigned long raxTouch(raxNode *n);
