@@ -326,6 +326,7 @@ int pubsubSubscribePattern(client *c, robj *pattern) {
     dictEntry *de;
     list *clients;
     int retval = 0;
+    // TODO: make sure to declare all local variables at the start of the function (C compatibility rule)
 
     /* Check if the pattern is a prefix (has a single star at the end). If yes, put it in the pubsub_prefixes radix tree.
      * If not, put it in the pubsub_patterns list */
@@ -341,7 +342,7 @@ int pubsubSubscribePattern(client *c, robj *pattern) {
             list *clients = NULL;
 
             /* Check if the server already has clients for that prefix */            
-            if (raxTryInsert(server.pubsub_prefixes,pattern->ptr,sdslen(pattern->ptr)-1,newClients,(void **) &clients) == 0) {
+            if (raxTryInsert(server.pubsub_prefixes,prefix,prefixLen,newClients,(void **)&clients) == 0) {
                 /* Already clients for this pattern */
                 listRelease(newClients);
             } else {
@@ -382,22 +383,42 @@ int pubsubUnsubscribePattern(client *c, robj *pattern, int notify) {
     list *clients;
     listNode *ln;
     int retval = 0;
+    // TODO: make sure to declare all local variables at the start of the function (C compatibility rule)
 
     incrRefCount(pattern); /* Protect the object. May be the same we remove */
-    if ((ln = listSearchKey(c->pubsub_patterns,pattern)) != NULL) {
-        retval = 1;
-        listDelNode(c->pubsub_patterns,ln);
-        /* Remove the client from the pattern -> clients list hash table */
-        de = dictFind(server.pubsub_patterns,pattern);
-        serverAssertWithInfo(c,NULL,de != NULL);
-        clients = dictGetVal(de);
-        ln = listSearchKey(clients,c);
-        serverAssertWithInfo(c,NULL,ln != NULL);
-        listDelNode(clients,ln);
-        if (listLength(clients) == 0) {
-            /* Free the list and associated hash entry at all if this was
-             * the latest client. */
-            dictDelete(server.pubsub_patterns,pattern);
+
+    /* Check if the pattern is a prefix (has a single star at the end). If yes, remove it in the pubsub_prefixes radix tree.
+     * If not, remove it in the pubsub_patterns list */
+    if (stringendswith(pattern->ptr,sdslen(pattern->ptr), '*')) {
+        unsigned char *prefix = pattern->ptr;
+        size_t prefixLen = sdslen(pattern->ptr)-1; /* Omit the star at the end */
+        if (raxRemove(c->pubsub_patterns, prefix, prefixLen, NULL) == 1) {
+            clients = raxFind(server.pubsub_prefixes, prefix, prefixLen);
+            serverAssertWithInfo(c,NULL, clients != raxNotFound);
+            ln = listSearchKey(clients,c);
+            serverAssertWithInfo(c,NULL,ln != NULL);
+            listDelNode(clients,ln);
+            if (listLength(clients) == 0) {
+                /* Remove the pattern from the server pubsub_prefixes */
+                raxRemove(server.pubsub_prefixes,prefix,prefixLen, NULL);
+            }
+        }
+    } else {
+        if ((ln = listSearchKey(c->pubsub_patterns,pattern)) != NULL) {
+            retval = 1;
+            listDelNode(c->pubsub_patterns,ln);
+            /* Remove the client from the pattern -> clients list hash table */
+            de = dictFind(server.pubsub_patterns,pattern);
+            serverAssertWithInfo(c,NULL,de != NULL);
+            clients = dictGetVal(de);
+            ln = listSearchKey(clients,c);
+            serverAssertWithInfo(c,NULL,ln != NULL);
+            listDelNode(clients,ln);
+            if (listLength(clients) == 0) {
+                /* Free the list and associated hash entry at all if this was
+                * the latest client. */
+                dictDelete(server.pubsub_patterns,pattern);
+            }
         }
     }
     /* Notify the client */
