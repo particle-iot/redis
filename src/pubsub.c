@@ -837,7 +837,8 @@ void sunsubscribeCommand(client *c) {
 
 size_t pubsubMemOverhead(client *c) {
     /* PubSub patterns */
-    size_t mem = listLength(c->pubsub_patterns) * sizeof(listNode);
+    size_t mem = listLength(c->pubsub_patterns) * sizeof(listNode) +
+                 raxNumNodes(c->pubsub_prefixes) * sizeof(raxNode);
     /* Global PubSub channels */
     mem += dictSize(c->pubsub_channels) * sizeof(dictEntry) +
            dictSlots(c->pubsub_channels) * sizeof(dictEntry*);
