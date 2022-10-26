@@ -1801,6 +1801,11 @@ uint64_t raxSize(rax *rax) {
     return rax->numele;
 }
 
+/* Return the number of nodes inside the radix tree. */
+uint64_t raxNumNodes(rax *rax) {
+    return rax->numnodes;
+}
+
 /* ----------------------------- Descend to pattern ------------------------------ */
 
 /* Append characters at the current key string of the descend struct. This

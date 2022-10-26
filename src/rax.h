@@ -223,6 +223,7 @@ int raxDescendNext(raxDescend *d);
 void raxDescendStop(raxDescend *d);
 void raxShow(rax *rax);
 uint64_t raxSize(rax *rax);
+uint64_t raxNumNodes(rax *rax);
 unsigned long raxTouch(raxNode *n);
 void raxSetDebugMsg(int onoff);
 
