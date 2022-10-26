@@ -348,7 +348,7 @@ int pubsubSubscribePattern(client *c, robj *pattern) {
 
     /* Check if the pattern is a prefix (has a single star at the end). If yes, put it in the pubsub_prefixes radix tree.
      * If not, put it in the pubsub_patterns list */
-    if (stringendswith(pattern->ptr,sdslen(pattern->ptr), '*')) {
+    if (stringendswith(pattern->ptr,sdslen(pattern->ptr),'*')) {
         unsigned char *prefix = pattern->ptr;
         size_t prefixLen = sdslen(pattern->ptr)-1; /* Omit the star at the end */
         /* Add the pattern to the client if it doesn't already exist */
@@ -406,10 +406,10 @@ int pubsubUnsubscribePattern(client *c, robj *pattern, int notify) {
 
     /* Check if the pattern is a prefix (has a single star at the end). If yes, remove it in the pubsub_prefixes radix tree.
      * If not, remove it in the pubsub_patterns dictionary */
-    if (stringendswith(pattern->ptr,sdslen(pattern->ptr), '*')) {
+    if (stringendswith(pattern->ptr,sdslen(pattern->ptr),'*')) {
         unsigned char *prefix = pattern->ptr;
         size_t prefixLen = sdslen(pattern->ptr)-1; /* Omit the star at the end */
-        if (raxRemove(c->pubsub_patterns, prefix, prefixLen, NULL) == 1) {
+        if (raxRemove(c->pubsub_prefixes, prefix, prefixLen, NULL) == 1) {
             clients = raxFind(server.pubsub_prefixes, prefix, prefixLen);
             serverAssertWithInfo(c,NULL, clients != raxNotFound);
             ln = listSearchKey(clients,c);
@@ -496,7 +496,32 @@ void pubsubUnsubscribeShardChannels(robj **channels, unsigned int count) {
  * client was subscribed from. */
 int pubsubUnsubscribeAllPatterns(client *c, int notify) {
     int count = 0;
+    // TODO: make sure to declare all local variables at the start of the function (C compatibility rule)
 
+    /* Unsubscribe from all the prefix patterns */
+    // TODO: Remove during code review: Code taken from cluster.c removeChannelsInSlot()
+
+    /* Retrieve all the prefixes for the client. */
+    int prefixCount = raxSize(c->pubsub_prefixes);
+    robj **prefixes = zmalloc(sizeof(robj*)*prefixCount);
+    raxIterator iter;
+    int j = 0;
+
+    raxStart(&iter,c->pubsub_prefixes);
+    raxSeek(&iter,"^",NULL,0);
+    while(raxNext(&iter)) {
+        prefixes[j++] = (robj*)iter.key;
+    }
+    raxStop(&iter);
+
+    for (j = 0; j < prefixCount; j++) {
+        count += pubsubUnsubscribePattern(c,prefixes[j],notify);
+    }
+
+    zfree(prefixes);
+
+
+    /* Unsubscribe from all the other patterns */
     if (dictSize(c->pubsub_patterns) > 0) {
         dictIterator *di = dictGetSafeIterator(c->pubsub_patterns);
         dictEntry *de;
@@ -507,6 +532,7 @@ int pubsubUnsubscribeAllPatterns(client *c, int notify) {
         }
         dictReleaseIterator(di);
     }
+    // TODO: add pubsub_prefixes to unsubscribe all
 
     /* We were subscribed to nothing? Still reply to the client. */
     if (notify && count == 0) addReplyPubsubPatUnsubscribed(c,NULL);
