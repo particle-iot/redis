@@ -517,7 +517,6 @@ int pubsubUnsubscribeAllPatterns(client *c, int notify) {
 
         count += pubsubUnsubscribePattern(c,pattern,notify);
     }
-    // TODO: add pubsub_prefixes to unsubscribe all
     if (notify && count == 0) addReplyPubsubPatUnsubscribed(c,NULL);
     return count;
 }

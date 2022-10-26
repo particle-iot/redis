@@ -1851,7 +1851,7 @@ int raxDescendNext(raxDescend *d) {
 
     size_t i = d->key_len; /* Position in the string. */
     size_t j = 0; /* Position in the node children (or bytes if compressed).*/
-    if (h->size && i < len) {
+    while (h->size && i < len) {
         unsigned char *v = h->data;
 
         /* If node is compressed, do all the characters match? */
@@ -1879,14 +1879,23 @@ int raxDescendNext(raxDescend *d) {
             } else {
                 raxDescendAddChars(d, &v[j], 1);
             }
+            i = d->key_len;
 
-            /* Copy the node where to continue the descent */
+            /* Get the node where to continue the descent */
             raxNode **children = raxNodeFirstChildPtr(h);
             if (h->iscompr) j = 0; /* Compressed node only child is at index 0. */
-            memcpy(&d->node,children+j,sizeof(d->node));
+            memcpy(&h,children+j,sizeof(d->node));
 
-            /* Save the node data for the caller. Note that the actual data is in the child node */
-            d->data = raxGetData(d->node);
+            /* If there is data in the child node, return it. After deletion, some nodes
+             * remain in the tree but don't have data associated with them. */
+            if (h->iskey) {
+                /* Save the node data for the caller. Note that the actual data is in the child node */
+                d->data = raxGetData(h);
+                d->node = h;
+            } else {
+                /* Continue the descent */
+                found = 0;
+            }
         }
     }
     
