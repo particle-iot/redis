@@ -241,7 +241,9 @@ int clientTotalPubSubSubscriptionCount(client *c) {
     return clientSubscriptionsCount(c) + clientShardSubscriptionsCount(c);
 }
 
-/* Returns 1 if a pattern is a prefix (at least 1 character with a single star at the end), 0 otherwise */
+/* Returns 1 if a pattern is a prefix (has a single star at the end), 0 otherwise.
+ * Omit the "all messages" pattern (a single star) since it's easier to handle this
+ * special case in the pattern dictionary pubsub_patterns. */
 int isPatternPrefix(robj *pattern) {
     size_t pattern_len = sdslen(pattern->ptr);
     return pattern_len > 1 && stringendswith(pattern->ptr,pattern_len,'*');
@@ -428,6 +430,7 @@ int pubsubUnsubscribePattern(client *c, robj *pattern, int notify) {
         unsigned char *prefix = pattern->ptr;
         size_t prefixLen = sdslen(pattern->ptr)-1; /* Omit the star at the end */
         if (raxRemove(c->pubsub_prefixes, prefix, prefixLen, NULL) == 1) {
+            retval = 1;
             clients = raxFind(server.pubsub_prefixes,prefix,prefixLen);
             serverAssertWithInfo(c,NULL,clients != raxNotFound);
             ln = listSearchKey(clients,c);
