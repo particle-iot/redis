@@ -439,6 +439,7 @@ int pubsubUnsubscribePattern(client *c, robj *pattern, int notify) {
             if (listLength(clients) == 0) {
                 /* Remove the pattern from the server pubsub_prefixes */
                 raxRemove(server.pubsub_prefixes,prefix,prefixLen,NULL);
+                listRelease(clients);
             }
         }
     } else {
@@ -455,6 +456,7 @@ int pubsubUnsubscribePattern(client *c, robj *pattern, int notify) {
                 /* Free the list and associated hash entry at all if this was
                 * the latest client. */
                 dictDelete(server.pubsub_patterns,pattern);
+                /* server.pubsub_patterns includes a value destructor that releases the list */
             }
         }
     }
