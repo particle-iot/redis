@@ -1863,6 +1863,7 @@ int ACLCheckAllPerm(client *c, int *idxptr) {
 void ACLKillPubsubClientsIfNeeded(user *new, user *original) {
     /* Do nothing if there are no subscribers. */
     if (!dictSize(server.pubsub_patterns) &&
+        !raxNumNodes(server.pubsub_prefixes) &&
         !dictSize(server.pubsub_channels) &&
         !dictSize(server.pubsubshard_channels))
         return;
@@ -1930,7 +1931,19 @@ void ACLKillPubsubClientsIfNeeded(user *new, user *original) {
         kill = 0;
 
         if (c->user == original && getClientType(c) == CLIENT_TYPE_PUBSUB) {
-            /* Check for pattern violations. */
+            /* Check for pattern violations in prefix patterns */
+            raxIterator iter;
+            raxStart(&iter,c->pubsub_prefixes);
+            raxSeek(&iter,"^",NULL,0);
+            while(!kill && raxNext(&iter)) {
+                o = patternFromPrefix(iter.key, iter.key_len);
+                int res = ACLCheckChannelAgainstList(upcoming, o->ptr, sdslen(o->ptr), 1);
+                kill = (res == ACL_DENIED_CHANNEL);
+                decrRefCount(o);
+            }
+            raxStop(&iter);
+
+            /* Check for pattern violations in other patterns */
             dictIterator *di = dictGetIterator(c->pubsub_patterns);
             dictEntry *de;
             while (!kill && ((de = dictNext(di)) != NULL)) {
