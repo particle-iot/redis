@@ -378,7 +378,10 @@ int pubsubSubscribePattern(client *c, robj *pattern) {
     list *clients;
     int retval = 0;
 
-    /* Check if the pattern is a prefix (has a single star at the end). If yes, put it in the pubsub_prefixes radix tree.
+    pattern = getDecodedObject(pattern);
+
+    /* Check if the pattern is a prefix (has a single star at the end).
+     * If yes, put it in the pubsub_prefixes radix tree.
      * If not, put it in the pubsub_patterns list */
     if (isPatternPrefix(pattern)) {
         unsigned char *prefix = pattern->ptr;
@@ -397,11 +400,11 @@ int pubsubSubscribePattern(client *c, robj *pattern) {
                 /* Already clients for this pattern */
                 zfree(new_prefix_clients);
             } else {
+                /* Keep pattern around for server radix tree */
+                incrRefCount(pattern);
                 /* No clients yet for this pattern. Populate the new_prefix_clients object */
                 new_prefix_clients->clients = listCreate();
                 new_prefix_clients->pattern = pattern;
-                /* Keep pattern around for server radix tree */
-                incrRefCount(pattern);
                 prefix_clients = new_prefix_clients;
             }
 
@@ -426,6 +429,7 @@ int pubsubSubscribePattern(client *c, robj *pattern) {
     }
     /* Notify the client */
     addReplyPubsubPatSubscribed(c,pattern);
+    decrRefCount(pattern);
     return retval;
 }
 
@@ -437,9 +441,11 @@ int pubsubUnsubscribePattern(client *c, robj *pattern, int notify) {
     listNode *ln;
     int retval = 0;
 
-    incrRefCount(pattern); /* Protect the object. May be the same we remove */
+    /* This also protects the pattern as it may be the same we remove */
+    pattern = getDecodedObject(pattern);
 
-    /* Check if the pattern is a prefix (has a single star at the end). If yes, remove it in the pubsub_prefixes radix tree.
+    /* Check if the pattern is a prefix (has a single star at the end).
+     * If yes, remove it in the pubsub_prefixes radix tree.
      * If not, remove it in the pubsub_patterns dictionary */
     if (isPatternPrefix(pattern)) {
         unsigned char *prefix = pattern->ptr;
@@ -589,6 +595,8 @@ int pubsubPublishMessageInternal(robj *channel, robj *message, pubsubtype type) 
     listNode *ln;
     listIter li;
 
+    channel = getDecodedObject(channel);
+
     /* Send to clients listening for that channel */
     de = dictFind(*type.serverPubSubChannels, channel);
     if (de) {
@@ -631,7 +639,6 @@ int pubsubPublishMessageInternal(robj *channel, robj *message, pubsubtype type) 
     /* Send to clients listening to channels matching other patterns */
     di = dictGetIterator(server.pubsub_patterns);
     if (di) {
-        channel = getDecodedObject(channel);
         while((de = dictNext(di)) != NULL) {
             robj *pattern = dictGetKey(de);
             list *clients = dictGetVal(de);
@@ -648,9 +655,9 @@ int pubsubPublishMessageInternal(robj *channel, robj *message, pubsubtype type) 
                 receivers++;
             }
         }
-        decrRefCount(channel);
         dictReleaseIterator(di);
     }
+    decrRefCount(channel);
     return receivers;
 }
 
