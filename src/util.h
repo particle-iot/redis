@@ -58,7 +58,6 @@ typedef enum {
 } ld2string_mode;
 
 int stringmatchlen(const char *p, int plen, const char *s, int slen, int nocase);
-int stringendswith(const char *s, int len, char c);
 int stringmatch(const char *p, const char *s, int nocase);
 int stringmatchlen_fuzz_test(void);
 unsigned long long memtoull(const char *p, int *err);
