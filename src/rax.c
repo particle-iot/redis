@@ -1865,6 +1865,8 @@ int raxDescendNext(raxDescend *d) {
             }
             /* If pattern doesn't match anymore, end the descent */
             if (j != h->size) break;
+            /* Add the characters to the current key */
+            if (!raxDescendAddChars(d,v,h->size)) return 0;
         } else {
             /* Find which character matches */
             for (j = 0; j < h->size; j++) {
@@ -1872,15 +1874,9 @@ int raxDescendNext(raxDescend *d) {
             }
             /* If pattern doesn't match anymore, end the descent */
             if (j == h->size) break;
+            /* Add the characters to the current key */
+            if (!raxDescendAddChars(d,&v[j],1)) return 0;
         }
-
-        /* Add the characters to the current key */
-        if (h->iscompr) {
-            raxDescendAddChars(d, v, h->size);
-        } else {
-            raxDescendAddChars(d, &v[j], 1);
-        }
-        i = d->key_len;
 
         /* Get the node where to continue the descent */
         raxNode **children = raxNodeFirstChildPtr(h);
@@ -1896,6 +1892,7 @@ int raxDescendNext(raxDescend *d) {
             return 1;
         }
         /* Continue the descent */
+        i = d->key_len;
     }
     
     return 0;
