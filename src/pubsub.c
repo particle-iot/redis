@@ -255,18 +255,6 @@ int isPatternPrefix(robj *pattern) {
     return pattern_len > 1 && stringendswith(pattern->ptr,pattern_len,'*');
 }
 
-/* Add a star at the end of a channel prefix and return as a new robj.
- * Caller is responsible for decrementing the reference count. */
-robj *patternFromPrefix(unsigned char *key, size_t key_len) {
-    size_t pattern_len = key_len + 1;
-    unsigned char *pattern_str = zmalloc(pattern_len);
-    memcpy(pattern_str, key, key_len);
-    pattern_str[pattern_len - 1] = '*';
-    robj *pattern = createStringObject((char*)pattern_str, pattern_len);
-    zfree(pattern_str);
-    return pattern;
-}
-
 /* Subscribe a client to a channel. Returns 1 if the operation succeeded, or
  * 0 if the client was already subscribed to that channel. */
 int pubsubSubscribeChannel(client *c, robj *channel, pubsubtype type) {
