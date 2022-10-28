@@ -1844,10 +1844,9 @@ void ACLKillPubsubClientsIfNeeded(user *new, user *original) {
             raxStart(&iter,c->pubsub_prefixes);
             raxSeek(&iter,"^",NULL,0);
             while(!kill && raxNext(&iter)) {
-                o = patternFromPrefix(iter.key, iter.key_len);
+                o = iter.data;
                 int res = ACLCheckChannelAgainstList(upcoming, o->ptr, sdslen(o->ptr), 1);
                 kill = (res == ACL_DENIED_CHANNEL);
-                decrRefCount(o);
             }
             raxStop(&iter);
 
