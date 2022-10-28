@@ -346,7 +346,6 @@ int pubsubSubscribePattern(client *c, robj *pattern) {
     dictEntry *de;
     list *clients;
     int retval = 0;
-    // TODO: make sure to declare all local variables at the start of the function (C compatibility rule)
 
     /* Check if the pattern is a prefix (has a single star at the end). If yes, put it in the pubsub_prefixes radix tree.
      * If not, put it in the pubsub_patterns list */
@@ -367,7 +366,6 @@ int pubsubSubscribePattern(client *c, robj *pattern) {
                 listRelease(newClients);
             } else {
                 /* No clients yet for this pattern. Make sure to keep the pattern around */
-                incrRefCount(pattern);
                 clients = newClients;
             }
 
@@ -403,7 +401,6 @@ int pubsubUnsubscribePattern(client *c, robj *pattern, int notify) {
     list *clients;
     listNode *ln;
     int retval = 0;
-    // TODO: make sure to declare all local variables at the start of the function (C compatibility rule)
 
     incrRefCount(pattern); /* Protect the object. May be the same we remove */
 
@@ -505,7 +502,6 @@ int pubsubUnsubscribeAllPatterns(client *c, int notify) {
     listNode *ln;
     listIter li;
     int count = 0;
-    // TODO: make sure to declare all local variables at the start of the function (C compatibility rule)
 
     /* Unsubscribe from all the prefix patterns */
 
