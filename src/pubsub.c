@@ -406,7 +406,7 @@ int pubsubSubscribePattern(client *c, robj *pattern) {
             }
 
             /* Add the client to the list of clients for this prefix */
-            listAddNodeTail(new_prefix_clients->clients,c);
+            listAddNodeTail(prefix_clients->clients,c);
         }
     } else {
         if (dictAdd(c->pubsub_patterns, pattern, NULL) == DICT_OK) {
