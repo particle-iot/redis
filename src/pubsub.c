@@ -233,8 +233,27 @@ int clientTotalPubSubSubscriptionCount(client *c) {
  * Omit the "all messages" pattern (a single star) since it's easier to handle this
  * special case in the pattern list pubsub_patterns. */
 int isPatternPrefix(robj *pattern) {
-    size_t pattern_len = sdslen(pattern->ptr);
-    return pattern_len > 1 && stringendswith(pattern->ptr,pattern_len,'*');
+    size_t len = sdslen(pattern->ptr);
+    const char *str = pattern->ptr;
+    /* Check that there's a star at the end of the pattern and that it's not escaped */
+    if (len < 2 || str[len - 1] != '*' || str[len - 2] == '\\') {
+        return 0;
+    }
+    /* Check that the pattern doesn't contain any other glob-style special characters */
+    int esc = 0; /* Whether the current character is escaped */
+    for (size_t i = 0; i < len - 1; ++i) {
+        if (esc) {
+            esc = 0;
+        } else {
+            char c = str[i];
+            if (c == '\\') {
+                esc = 1;
+            } else if (c == '?' || c == '*' || c == '[') {
+                return 0;
+            }
+        }
+    }
+    return 1;
 }
 
 /* Subscribe a client to a channel. Returns 1 if the operation succeeded, or
