@@ -3100,6 +3100,14 @@ struct redisCommandArg PUBSUB_CHANNELS_Args[] = {
 /* PUBSUB NUMPAT tips */
 #define PUBSUB_NUMPAT_tips NULL
 
+/********** PUBSUB NUMPREF ********************/
+
+/* PUBSUB NUMPREF history */
+#define PUBSUB_NUMPREF_History NULL
+
+/* PUBSUB NUMPREF tips */
+#define PUBSUB_NUMPREF_tips NULL
+
 /********** PUBSUB NUMSUB ********************/
 
 /* PUBSUB NUMSUB history */
@@ -3163,6 +3171,7 @@ struct redisCommand PUBSUB_Subcommands[] = {
 {"channels","List active channels","O(N) where N is the number of active channels, and assuming constant time pattern matching (relatively short channels and patterns)","2.8.0",CMD_DOC_NONE,NULL,NULL,COMMAND_GROUP_PUBSUB,PUBSUB_CHANNELS_History,PUBSUB_CHANNELS_tips,pubsubCommand,-2,CMD_PUBSUB|CMD_LOADING|CMD_STALE,0,.args=PUBSUB_CHANNELS_Args},
 {"help","Show helpful text about the different subcommands","O(1)","6.2.0",CMD_DOC_NONE,NULL,NULL,COMMAND_GROUP_PUBSUB,PUBSUB_HELP_History,PUBSUB_HELP_tips,pubsubCommand,2,CMD_LOADING|CMD_STALE,0},
 {"numpat","Get the count of unique patterns pattern subscriptions","O(1)","2.8.0",CMD_DOC_NONE,NULL,NULL,COMMAND_GROUP_PUBSUB,PUBSUB_NUMPAT_History,PUBSUB_NUMPAT_tips,pubsubCommand,2,CMD_PUBSUB|CMD_LOADING|CMD_STALE,0},
+{"numpref","Get the count of pattern subscriptions that are prefixes","O(1)","7.0.5-prefixes",CMD_DOC_NONE,NULL,NULL,COMMAND_GROUP_PUBSUB,PUBSUB_NUMPREF_History,PUBSUB_NUMPREF_tips,pubsubCommand,2,CMD_PUBSUB|CMD_LOADING|CMD_STALE,0},
 {"numsub","Get the count of subscribers for channels","O(N) for the NUMSUB subcommand, where N is the number of requested channels","2.8.0",CMD_DOC_NONE,NULL,NULL,COMMAND_GROUP_PUBSUB,PUBSUB_NUMSUB_History,PUBSUB_NUMSUB_tips,pubsubCommand,-2,CMD_PUBSUB|CMD_LOADING|CMD_STALE,0,.args=PUBSUB_NUMSUB_Args},
 {"patterns","Get the list of non-prefix patterns subscribed by any client","O(N)","7.0.5-prefixes",CMD_DOC_NONE,NULL,NULL,COMMAND_GROUP_PUBSUB,PUBSUB_PATTERNS_History,PUBSUB_PATTERNS_tips,pubsubCommand,2,CMD_PUBSUB|CMD_LOADING|CMD_STALE,0},
 {"prefixes","Get the list of prefix patterns subscribed by any client","O(N)","7.0.5-prefixes",CMD_DOC_NONE,NULL,NULL,COMMAND_GROUP_PUBSUB,PUBSUB_PREFIXES_History,PUBSUB_PREFIXES_tips,pubsubCommand,2,CMD_PUBSUB|CMD_LOADING|CMD_STALE,0},
