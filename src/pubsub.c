@@ -76,6 +76,16 @@ dict* getClientPubSubShardChannels(client *c);
 void channelList(client *c, sds pat, dict* pubsub_channels);
 
 /*
+ * Get list of non-prefix patterns that any client is subscribed to
+ */
+void patternList(client *c);
+
+/*
+ * Get list of prefix patterns that any client is subscribed to
+ */
+void prefixList(client *c);
+
+/*
  * Pub/Sub type for global channels.
  */
 pubsubtype pubSubType = {
@@ -768,6 +778,10 @@ void pubsubCommand(client *c) {
 "NUMSUB [<channel> ...]",
 "    Return the number of subscribers for the specified channels, excluding",
 "    pattern subscriptions(default: no channels).",
+"PATTERNS",
+"    Get the list of non-prefix patterns subscribed by any client",
+"PREFIXES",
+"    Get the list of prefix patterns subscribed by any client",
 "SHARDCHANNELS [<pattern>]",
 "    Return the currently active shard level channels matching a <pattern> (default: '*').",
 "SHARDNUMSUB [<shardchannel> ...]",
@@ -795,6 +809,12 @@ NULL
     } else if (!strcasecmp(c->argv[1]->ptr,"numpat") && c->argc == 2) {
         /* PUBSUB NUMPAT */
         addReplyLongLong(c,dictSize(server.pubsub_patterns)+raxSize(server.pubsub_prefixes));
+    } else if (!strcasecmp(c->argv[1]->ptr,"patterns") && c->argc == 2) {
+        /* PUBSUB PATTERNS */
+        patternList(c);
+    } else if (!strcasecmp(c->argv[1]->ptr,"prefixes") && c->argc == 2) {
+        /* PUBSUB PREFIXES */
+        prefixList(c);
     } else if (!strcasecmp(c->argv[1]->ptr,"shardchannels") &&
         (c->argc == 2 || c->argc == 3)) 
     {
@@ -836,6 +856,40 @@ void channelList(client *c, sds pat, dict *pubsub_channels) {
         }
     }
     dictReleaseIterator(di);
+    setDeferredArrayLen(c,replylen,mblen);
+}
+
+void patternList(client *c) {
+    dictIterator *di = dictGetIterator(server.pubsub_patterns);
+    dictEntry *de;
+    long mblen = 0;
+    void *replylen;
+
+    replylen = addReplyDeferredLen(c);
+    while((de = dictNext(di)) != NULL) {
+        robj *pattern = dictGetKey(de);
+        addReplyBulk(c,pattern);
+        mblen++;
+    }
+    dictReleaseIterator(di);
+    setDeferredArrayLen(c,replylen,mblen);
+}
+
+void prefixList(client *c) {
+    long mblen = 0;
+    void *replylen;
+
+    replylen = addReplyDeferredLen(c);
+
+    raxIterator iter;
+    raxStart(&iter,server.pubsub_prefixes);
+    raxSeek(&iter,"^",NULL,0);
+    while(raxNext(&iter)) {
+        prefixclientstype *prefix_clients = (prefixclientstype *)iter.data;
+        addReplyBulk(c,prefix_clients->pattern);
+        mblen++;
+    }
+    raxStop(&iter);
     setDeferredArrayLen(c,replylen,mblen);
 }
 
