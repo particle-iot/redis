@@ -3114,6 +3114,22 @@ struct redisCommandArg PUBSUB_NUMSUB_Args[] = {
 {0}
 };
 
+/********** PUBSUB PATTERNS ********************/
+
+/* PUBSUB PATTERNS history */
+#define PUBSUB_PATTERNS_History NULL
+
+/* PUBSUB PATTERNS tips */
+#define PUBSUB_PATTERNS_tips NULL
+
+/********** PUBSUB PREFIXES ********************/
+
+/* PUBSUB PREFIXES history */
+#define PUBSUB_PREFIXES_History NULL
+
+/* PUBSUB PREFIXES tips */
+#define PUBSUB_PREFIXES_tips NULL
+
 /********** PUBSUB SHARDCHANNELS ********************/
 
 /* PUBSUB SHARDCHANNELS history */
@@ -3148,6 +3164,8 @@ struct redisCommand PUBSUB_Subcommands[] = {
 {"help","Show helpful text about the different subcommands","O(1)","6.2.0",CMD_DOC_NONE,NULL,NULL,COMMAND_GROUP_PUBSUB,PUBSUB_HELP_History,PUBSUB_HELP_tips,pubsubCommand,2,CMD_LOADING|CMD_STALE,0},
 {"numpat","Get the count of unique patterns pattern subscriptions","O(1)","2.8.0",CMD_DOC_NONE,NULL,NULL,COMMAND_GROUP_PUBSUB,PUBSUB_NUMPAT_History,PUBSUB_NUMPAT_tips,pubsubCommand,2,CMD_PUBSUB|CMD_LOADING|CMD_STALE,0},
 {"numsub","Get the count of subscribers for channels","O(N) for the NUMSUB subcommand, where N is the number of requested channels","2.8.0",CMD_DOC_NONE,NULL,NULL,COMMAND_GROUP_PUBSUB,PUBSUB_NUMSUB_History,PUBSUB_NUMSUB_tips,pubsubCommand,-2,CMD_PUBSUB|CMD_LOADING|CMD_STALE,0,.args=PUBSUB_NUMSUB_Args},
+{"patterns","Get the list of non-prefix patterns subscribed by any client","O(N)","7.0.5-prefixes",CMD_DOC_NONE,NULL,NULL,COMMAND_GROUP_PUBSUB,PUBSUB_PATTERNS_History,PUBSUB_PATTERNS_tips,pubsubCommand,2,CMD_PUBSUB|CMD_LOADING|CMD_STALE,0},
+{"prefixes","Get the list of prefix patterns subscribed by any client","O(N)","7.0.5-prefixes",CMD_DOC_NONE,NULL,NULL,COMMAND_GROUP_PUBSUB,PUBSUB_PREFIXES_History,PUBSUB_PREFIXES_tips,pubsubCommand,2,CMD_PUBSUB|CMD_LOADING|CMD_STALE,0},
 {"shardchannels","List active shard channels","O(N) where N is the number of active shard channels, and assuming constant time pattern matching (relatively short shard channels).","7.0.0",CMD_DOC_NONE,NULL,NULL,COMMAND_GROUP_PUBSUB,PUBSUB_SHARDCHANNELS_History,PUBSUB_SHARDCHANNELS_tips,pubsubCommand,-2,CMD_PUBSUB|CMD_LOADING|CMD_STALE,0,.args=PUBSUB_SHARDCHANNELS_Args},
 {"shardnumsub","Get the count of subscribers for shard channels","O(N) for the SHARDNUMSUB subcommand, where N is the number of requested shard channels","7.0.0",CMD_DOC_NONE,NULL,NULL,COMMAND_GROUP_PUBSUB,PUBSUB_SHARDNUMSUB_History,PUBSUB_SHARDNUMSUB_tips,pubsubCommand,-2,CMD_PUBSUB|CMD_LOADING|CMD_STALE,0,.args=PUBSUB_SHARDNUMSUB_Args},
 {0}

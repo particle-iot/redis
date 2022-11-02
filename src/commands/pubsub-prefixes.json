@@ -1,0 +1,16 @@
+{
+    "PREFIXES": {
+        "summary": "Get the list of prefix patterns subscribed by any client",
+        "complexity": "O(N)",
+        "group": "pubsub",
+        "since": "7.0.5-prefixes",
+        "arity": 2,
+        "container": "PUBSUB",
+        "function": "pubsubCommand",
+        "command_flags": [
+            "PUBSUB",
+            "LOADING",
+            "STALE"
+        ]
+    }
+}
