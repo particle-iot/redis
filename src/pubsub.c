@@ -775,6 +775,8 @@ void pubsubCommand(client *c) {
 "    Return the currently active channels matching a <pattern> (default: '*').",
 "NUMPAT",
 "    Return number of subscriptions to patterns.",
+"NUMPREF",
+"    Return number of subscriptions to patterns that are prefixes only.",
 "NUMSUB [<channel> ...]",
 "    Return the number of subscribers for the specified channels, excluding",
 "    pattern subscriptions(default: no channels).",
@@ -809,6 +811,9 @@ NULL
     } else if (!strcasecmp(c->argv[1]->ptr,"numpat") && c->argc == 2) {
         /* PUBSUB NUMPAT */
         addReplyLongLong(c,dictSize(server.pubsub_patterns)+raxSize(server.pubsub_prefixes));
+    } else if (!strcasecmp(c->argv[1]->ptr,"numpref") && c->argc == 2) {
+        /* PUBSUB NUMPREF */
+        addReplyLongLong(c,raxSize(server.pubsub_prefixes));
     } else if (!strcasecmp(c->argv[1]->ptr,"patterns") && c->argc == 2) {
         /* PUBSUB PATTERNS */
         patternList(c);
