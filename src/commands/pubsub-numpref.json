@@ -1,0 +1,16 @@
+{
+    "NUMPREF": {
+        "summary": "Get the count of pattern subscriptions that are prefixes",
+        "complexity": "O(1)",
+        "group": "pubsub",
+        "since": "7.0.5-prefixes",
+        "arity": 2,
+        "container": "PUBSUB",
+        "function": "pubsubCommand",
+        "command_flags": [
+            "PUBSUB",
+            "LOADING",
+            "STALE"
+        ]
+    }
+}

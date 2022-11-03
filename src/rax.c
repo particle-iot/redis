@@ -1801,6 +1801,108 @@ uint64_t raxSize(rax *rax) {
     return rax->numele;
 }
 
+/* Return the number of nodes inside the radix tree. */
+uint64_t raxNumNodes(rax *rax) {
+    return rax->numnodes;
+}
+
+/* ----------------------------- Descend to pattern ------------------------------ */
+
+/* Append characters at the current key string of the descend struct. This
+ * is a low level function used to implement the descent, not callable by
+ * the user. Returns 0 on out of memory, otherwise 1 is returned. */
+int raxDescendAddChars(raxDescend *d, unsigned char *s, size_t len) {
+    if (len == 0) return 1;
+    if (d->key_max < d->key_len+len) {
+        unsigned char *old = (d->key == d->key_static_string) ? NULL :
+                                                                  d->key;
+        size_t new_max = (d->key_len+len)*2;
+        d->key = rax_realloc(old,new_max);
+        if (d->key == NULL) {
+            d->key = (!old) ? d->key_static_string : old;
+            errno = ENOMEM;
+            return 0;
+        }
+        if (old == NULL) memcpy(d->key,d->key_static_string,d->key_len);
+        d->key_max = new_max;
+    }
+    memmove(d->key+d->key_len,s,len);
+    d->key_len += len;
+    return 1;
+}
+
+/* Initialize a descent from the root of the radix tree through all the levels
+ * matching the pattern.
+ * pattern must be valid from raxDescendStart() until raxDescendStop() */
+void raxDescendStart(raxDescend *d, rax *rt, unsigned char *pattern, size_t len) {
+    d->rt = rt;
+    d->pattern = pattern;
+    d->pattern_len = len;
+    d->key_len = 0;
+    d->key = d->key_static_string;
+    d->key_max = RAX_DESCEND_STATIC_LEN;
+    d->node = rt->head;
+}
+
+/* Walk through each level of the radix tree, returning every node that is a partial
+ * match for the pattern. Returns 1 if there a partial node matching the pattern, 0 if
+ * there are no more nodes matching the pattern.
+ * This is a modified version of raxLowWalk() that returns after every step. */
+int raxDescendNext(raxDescend *d) {
+    raxNode *h = d->node;
+    unsigned char *s = d->pattern;
+    size_t len = d->pattern_len;
+
+    size_t i = d->key_len; /* Position in the string. */
+    size_t j = 0; /* Position in the node children (or bytes if compressed).*/
+    while (h->size && i < len) {
+        unsigned char *v = h->data;
+
+        /* If node is compressed, do all the characters match? */
+        if (h->iscompr) {
+            for (j = 0; j < h->size && i < len; j++, i++) {
+                if (v[j] != s[i]) break;
+            }
+            /* If pattern doesn't match anymore, end the descent */
+            if (j != h->size) break;
+            /* Add the characters to the current key */
+            if (!raxDescendAddChars(d,v,h->size)) return 0;
+        } else {
+            /* Find which character matches */
+            for (j = 0; j < h->size; j++) {
+                if (v[j] == s[i]) break;
+            }
+            /* If pattern doesn't match anymore, end the descent */
+            if (j == h->size) break;
+            /* Add the characters to the current key */
+            if (!raxDescendAddChars(d,&v[j],1)) return 0;
+        }
+
+        /* Get the node where to continue the descent */
+        raxNode **children = raxNodeFirstChildPtr(h);
+        if (h->iscompr) j = 0; /* Compressed node only child is at index 0. */
+        memcpy(&h,children+j,sizeof(d->node));
+
+        /* If there is data in the child node, return it. After deletion, some nodes
+            * remain in the tree but don't have data associated with them. */
+        if (h->iskey) {
+            /* Save the node data for the caller. Note that the actual data is in the child node */
+            d->data = raxGetData(h);
+            d->node = h;
+            return 1;
+        }
+        /* Continue the descent */
+        i = d->key_len;
+    }
+    
+    return 0;
+}
+
+/* Free the descent struct */
+void raxDescendStop(raxDescend *d) {
+    if (d->key != d->key_static_string) rax_free(d->key);
+}
+
 /* ----------------------------- Introspection ------------------------------ */
 
 /* This function is mostly used for debugging and learning purposes.

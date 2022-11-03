@@ -1839,7 +1839,18 @@ void ACLKillPubsubClientsIfNeeded(user *new, user *original) {
         kill = 0;
 
         if (c->user == original && getClientType(c) == CLIENT_TYPE_PUBSUB) {
-            /* Check for pattern violations. */
+            /* Check for pattern violations in prefix patterns */
+            raxIterator iter;
+            raxStart(&iter,c->pubsub_prefixes);
+            raxSeek(&iter,"^",NULL,0);
+            while(!kill && raxNext(&iter)) {
+                o = iter.data;
+                int res = ACLCheckChannelAgainstList(upcoming, o->ptr, sdslen(o->ptr), 1);
+                kill = (res == ACL_DENIED_CHANNEL);
+            }
+            raxStop(&iter);
+
+            /* Check for pattern violations in other patterns */
             listRewind(c->pubsub_patterns,&lpi);
             while (!kill && ((lpn = listNext(&lpi)) != NULL)) {
 
@@ -1847,6 +1858,7 @@ void ACLKillPubsubClientsIfNeeded(user *new, user *original) {
                 int res = ACLCheckChannelAgainstList(upcoming, o->ptr, sdslen(o->ptr), 1);
                 kill = (res == ACL_DENIED_CHANNEL);
             }
+
             /* Check for channel violations. */
             if (!kill) {
                 /* Check for global channels violation. */
