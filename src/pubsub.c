@@ -559,24 +559,24 @@ int pubsubUnsubscribeAllPatterns(client *c, int notify) {
     int count = 0;
 
     /* Unsubscribe from all the prefix patterns */
+    if (raxSize(c->pubsub_prefixes) > 0) {
+        int prefixCount = raxSize(c->pubsub_prefixes);
+        robj **patterns = zmalloc(sizeof(robj*)*prefixCount);
+        raxIterator iter;
+        int j = 0;
 
-    /* Retrieve all the prefixes for the client. */
-    int prefixCount = raxSize(c->pubsub_prefixes);
-    robj **patterns = zmalloc(sizeof(robj*)*prefixCount);
-    raxIterator iter;
-    int j = 0;
+        raxStart(&iter,c->pubsub_prefixes);
+        raxSeek(&iter,"^",NULL,0);
+        while(raxNext(&iter)) {
+            patterns[j++] = iter.data;
+        }
+        raxStop(&iter);
 
-    raxStart(&iter,c->pubsub_prefixes);
-    raxSeek(&iter,"^",NULL,0);
-    while(raxNext(&iter)) {
-        patterns[j++] = iter.data;
+        for (j = 0; j < prefixCount; j++) {
+            count += pubsubUnsubscribePattern(c,patterns[j],notify);
+        }
+        zfree(patterns);
     }
-    raxStop(&iter);
-
-    for (j = 0; j < prefixCount; j++) {
-        count += pubsubUnsubscribePattern(c,patterns[j],notify);
-    }
-    zfree(patterns);
 
     /* Unsubscribe from all the other patterns */
     if (dictSize(c->pubsub_patterns) > 0) {
