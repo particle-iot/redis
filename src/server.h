@@ -1217,6 +1217,7 @@ typedef struct client {
     list *watched_keys;     /* Keys WATCHED for MULTI/EXEC CAS */
     dict *pubsub_channels;  /* channels a client is interested in (SUBSCRIBE) */
     dict *pubsub_patterns;  /* patterns a client is interested in (PSUBSCRIBE) */
+    rax *pubsub_prefixes;   /* radix tree of (SUBSCRIBE) patterns that are prefixes. Mutually exclusive with pubsub_patterns */
     dict *pubsubshard_channels;  /* shard level channels a client is interested in (SSUBSCRIBE) */
     sds peerid;             /* Cached peer ID. */
     sds sockname;           /* Cached connection target address. */
@@ -1962,6 +1963,7 @@ struct redisServer {
     /* Pubsub */
     dict *pubsub_channels;  /* Map channels to list of subscribed clients */
     dict *pubsub_patterns;  /* A dict of pubsub_patterns */
+    rax *pubsub_prefixes; /* A radix tree of pubsub patterns that are prefixes. Mutually exclusive with pubsub_patterns */
     int notify_keyspace_events; /* Events to propagate via Pub/Sub. This is an
                                    xor of NOTIFY_... flags. */
     dict *pubsubshard_channels;  /* Map shard channels to list of subscribed clients */

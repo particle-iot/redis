@@ -2646,6 +2646,7 @@ void initServer(void) {
     evictionPoolAlloc(); /* Initialize the LRU keys pool. */
     server.pubsub_channels = dictCreate(&keylistDictType);
     server.pubsub_patterns = dictCreate(&keylistDictType);
+    server.pubsub_prefixes = raxNew();
     server.pubsubshard_channels = dictCreate(&keylistDictType);
     server.cronloops = 0;
     server.in_exec = 0;
@@ -5908,6 +5909,7 @@ sds genRedisInfoString(dict *section_dict, int all_sections, int everything) {
             "keyspace_misses:%lld\r\n"
             "pubsub_channels:%ld\r\n"
             "pubsub_patterns:%lu\r\n"
+            "pubsub_prefixes:%llu\r\n"
             "pubsubshard_channels:%lu\r\n"
             "latest_fork_usec:%lld\r\n"
             "total_forks:%lld\r\n"
@@ -5963,6 +5965,7 @@ sds genRedisInfoString(dict *section_dict, int all_sections, int everything) {
             server.stat_keyspace_misses,
             dictSize(server.pubsub_channels),
             dictSize(server.pubsub_patterns),
+            (unsigned long long) raxSize(server.pubsub_prefixes),
             dictSize(server.pubsubshard_channels),
             server.stat_fork_time,
             server.stat_total_forks,

@@ -42,6 +42,12 @@ typedef struct pubsubtype {
     robj **messageBulk;
 }pubsubtype;
 
+/* Structure to hold the pubsub prefix pattern and list of clients subscribed */
+typedef struct prefixclientstype {
+    robj *pattern;
+    list *clients;
+} prefixclientstype;
+
 /*
  * Get client's global Pub/Sub channels subscription count.
  */
@@ -68,6 +74,16 @@ dict* getClientPubSubShardChannels(client *c);
  * matching the pattern.
  */
 void channelList(client *c, sds pat, dict* pubsub_channels);
+
+/*
+ * Get list of non-prefix patterns that any client is subscribed to
+ */
+void patternList(client *c);
+
+/*
+ * Get list of prefix patterns that any client is subscribed to
+ */
+void prefixList(client *c);
 
 /*
  * Pub/Sub type for global channels.
@@ -208,7 +224,7 @@ void addReplyPubsubPatUnsubscribed(client *c, robj *pattern) {
 
 /* Return the number of pubsub channels + patterns is handled. */
 int serverPubsubSubscriptionCount(void) {
-    return dictSize(server.pubsub_channels) + dictSize(server.pubsub_patterns);
+    return dictSize(server.pubsub_channels) + dictSize(server.pubsub_patterns) + raxSize(server.pubsub_prefixes);
 }
 
 /* Return the number of pubsub shard level channels is handled. */
@@ -219,7 +235,7 @@ int serverPubsubShardSubscriptionCount(void) {
 
 /* Return the number of channels + patterns a client is subscribed to. */
 int clientSubscriptionsCount(client *c) {
-    return dictSize(c->pubsub_channels) + dictSize(c->pubsub_patterns);
+    return dictSize(c->pubsub_channels) + dictSize(c->pubsub_patterns) + raxSize(c->pubsub_prefixes);
 }
 
 /* Return the number of shard level channels a client is subscribed to. */
@@ -239,6 +255,33 @@ dict* getClientPubSubShardChannels(client *c) {
  * a client is subscribed to. */
 int clientTotalPubSubSubscriptionCount(client *c) {
     return clientSubscriptionsCount(c) + clientShardSubscriptionsCount(c);
+}
+
+/* Returns 1 if a pattern is a prefix (has a single star at the end), 0 otherwise.
+ * Omit the "all messages" pattern (a single star) since it's easier to handle this
+ * special case in the pattern dictionary pubsub_patterns. */
+int isPatternPrefix(robj *pattern) {
+    size_t len = sdslen(pattern->ptr);
+    const char *str = pattern->ptr;
+    /* Check that there's a star at the end of the pattern and that it's not escaped */
+    if (len < 2 || str[len - 1] != '*' || str[len - 2] == '\\') {
+        return 0;
+    }
+    /* Check that the pattern doesn't contain any other glob-style special characters */
+    int esc = 0; /* Whether the current character is escaped */
+    for (size_t i = 0; i < len - 1; ++i) {
+        if (esc) {
+            esc = 0;
+        } else {
+            char c = str[i];
+            if (c == '\\') {
+                esc = 1;
+            } else if (c == '?' || c == '*' || c == '[') {
+                return 0;
+            }
+        }
+    }
+    return 1;
 }
 
 /* Subscribe a client to a channel. Returns 1 if the operation succeeded, or
@@ -345,22 +388,58 @@ int pubsubSubscribePattern(client *c, robj *pattern) {
     list *clients;
     int retval = 0;
 
-    if (dictAdd(c->pubsub_patterns, pattern, NULL) == DICT_OK) {
-        retval = 1;
-        incrRefCount(pattern);
-        /* Add the client to the pattern -> list of clients hash table */
-        de = dictFind(server.pubsub_patterns,pattern);
-        if (de == NULL) {
-            clients = listCreate();
-            dictAdd(server.pubsub_patterns,pattern,clients);
+    pattern = getDecodedObject(pattern);
+
+    /* Check if the pattern is a prefix (has a single star at the end).
+     * If yes, put it in the pubsub_prefixes radix tree.
+     * If not, put it in the pubsub_patterns list */
+    if (isPatternPrefix(pattern)) {
+        unsigned char *prefix = pattern->ptr;
+        size_t prefixLen = sdslen(pattern->ptr)-1; /* Omit the star at the end */
+        /* Add the pattern to the client if it doesn't already exist */
+        if (raxTryInsert(c->pubsub_prefixes,prefix,prefixLen,pattern,NULL)) {
+            retval = 1;
+            /* Keep pattern around for the client radix tree */
             incrRefCount(pattern);
-        } else {
-            clients = dictGetVal(de);
+
+            prefixclientstype *new_prefix_clients = zmalloc(sizeof(prefixclientstype));
+            prefixclientstype *prefix_clients = NULL;
+
+            /* Check if the server already has clients for that prefix */            
+            if (raxTryInsert(server.pubsub_prefixes,prefix,prefixLen,new_prefix_clients,(void **)&prefix_clients) == 0) {
+                /* Already clients for this pattern */
+                zfree(new_prefix_clients);
+            } else {
+                /* Keep pattern around for server radix tree */
+                incrRefCount(pattern);
+                /* No clients yet for this pattern. Populate the new_prefix_clients object */
+                new_prefix_clients->clients = listCreate();
+                new_prefix_clients->pattern = pattern;
+                prefix_clients = new_prefix_clients;
+            }
+
+            /* Add the client to the list of clients for this prefix */
+            listAddNodeTail(prefix_clients->clients,c);
         }
-        listAddNodeTail(clients,c);
+    } else {
+        if (dictAdd(c->pubsub_patterns, pattern, NULL) == DICT_OK) {
+            retval = 1;
+            incrRefCount(pattern);
+            /* Add the client to the pattern -> list of clients hash table */
+            de = dictFind(server.pubsub_patterns,pattern);
+            if (de == NULL) {
+                clients = listCreate();
+                dictAdd(server.pubsub_patterns,pattern,clients);
+                incrRefCount(pattern);
+            } else {
+                clients = dictGetVal(de);
+            }
+            listAddNodeTail(clients,c);
+        }
     }
     /* Notify the client */
     addReplyPubsubPatSubscribed(c,pattern);
+    decrRefCount(pattern);
     return retval;
 }
 
@@ -372,20 +451,51 @@ int pubsubUnsubscribePattern(client *c, robj *pattern, int notify) {
     listNode *ln;
     int retval = 0;
 
-    incrRefCount(pattern); /* Protect the object. May be the same we remove */
-    if (dictDelete(c->pubsub_patterns, pattern) == DICT_OK) {
-        retval = 1;
-        /* Remove the client from the pattern -> clients list hash table */
-        de = dictFind(server.pubsub_patterns,pattern);
-        serverAssertWithInfo(c,NULL,de != NULL);
-        clients = dictGetVal(de);
-        ln = listSearchKey(clients,c);
-        serverAssertWithInfo(c,NULL,ln != NULL);
-        listDelNode(clients,ln);
-        if (listLength(clients) == 0) {
-            /* Free the list and associated hash entry at all if this was
-             * the latest client. */
-            dictDelete(server.pubsub_patterns,pattern);
+    /* This also protects the pattern as it may be the same we remove */
+    pattern = getDecodedObject(pattern);
+
+    /* Check if the pattern is a prefix (has a single star at the end).
+     * If yes, remove it in the pubsub_prefixes radix tree.
+     * If not, remove it in the pubsub_patterns dictionary */
+    if (isPatternPrefix(pattern)) {
+        unsigned char *prefix = pattern->ptr;
+        size_t prefixLen = sdslen(pattern->ptr)-1; /* Omit the star at the end */
+        robj *removed_pattern;
+        if (raxRemove(c->pubsub_prefixes,prefix,prefixLen,(void **)&removed_pattern) == 1) {
+            retval = 1;
+            decrRefCount(removed_pattern);
+
+            /* Remove the client from the prefix pattern radix tree */
+            prefixclientstype *prefix_clients = raxFind(server.pubsub_prefixes,prefix,prefixLen);
+            serverAssertWithInfo(c,NULL,prefix_clients != raxNotFound);
+            clients = prefix_clients->clients;
+            ln = listSearchKey(clients,c);
+            serverAssertWithInfo(c,NULL,ln != NULL);
+            listDelNode(clients,ln);
+            if (listLength(clients) == 0) {
+                /* Remove the pattern from the server pubsub_prefixes */
+                raxRemove(server.pubsub_prefixes,prefix,prefixLen,NULL);
+                listRelease(clients);
+                decrRefCount(prefix_clients->pattern);
+                zfree(prefix_clients);
+            }
+        }
+    } else {
+        if (dictDelete(c->pubsub_patterns, pattern) == DICT_OK) {
+            retval = 1;
+            /* Remove the client from the pattern -> clients list hash table */
+            de = dictFind(server.pubsub_patterns,pattern);
+            serverAssertWithInfo(c,NULL,de != NULL);
+            clients = dictGetVal(de);
+            ln = listSearchKey(clients,c);
+            serverAssertWithInfo(c,NULL,ln != NULL);
+            listDelNode(clients,ln);
+            if (listLength(clients) == 0) {
+                /* Free the list and associated hash entry at all if this was
+                * the latest client. */
+                dictDelete(server.pubsub_patterns,pattern);
+                /* server.pubsub_patterns includes a value destructor that releases the list */
+            }
         }
     }
     /* Notify the client */
@@ -448,6 +558,27 @@ void pubsubUnsubscribeShardChannels(robj **channels, unsigned int count) {
 int pubsubUnsubscribeAllPatterns(client *c, int notify) {
     int count = 0;
 
+    /* Unsubscribe from all the prefix patterns */
+    if (raxSize(c->pubsub_prefixes) > 0) {
+        int prefixCount = raxSize(c->pubsub_prefixes);
+        robj **patterns = zmalloc(sizeof(robj*)*prefixCount);
+        raxIterator iter;
+        int j = 0;
+
+        raxStart(&iter,c->pubsub_prefixes);
+        raxSeek(&iter,"^",NULL,0);
+        while(raxNext(&iter)) {
+            patterns[j++] = iter.data;
+        }
+        raxStop(&iter);
+
+        for (j = 0; j < prefixCount; j++) {
+            count += pubsubUnsubscribePattern(c,patterns[j],notify);
+        }
+        zfree(patterns);
+    }
+
+    /* Unsubscribe from all the other patterns */
     if (dictSize(c->pubsub_patterns) > 0) {
         dictIterator *di = dictGetSafeIterator(c->pubsub_patterns);
         dictEntry *de;
@@ -495,10 +626,29 @@ int pubsubPublishMessageInternal(robj *channel, robj *message, pubsubtype type) 
         return receivers;
     }
 
-    /* Send to clients listening to matching channels */
+    /* Send to clients listening to channels matching prefix patterns */
+    channel = getDecodedObject(channel);
+
+    raxDescend d;
+    raxDescendStart(&d,server.pubsub_prefixes,channel->ptr,sdslen(channel->ptr));
+    /* Descend the prefix radix tree to find every level that is a partial match of the channel name. */
+    while (raxDescendNext(&d)) {
+        prefixclientstype *prefix_clients = (prefixclientstype *)d.data;
+
+        /* Publish to each client */
+        listRewind(prefix_clients->clients,&li);
+        while ((ln = listNext(&li)) != NULL) {
+            client *c = listNodeValue(ln);
+            addReplyPubsubPatMessage(c,prefix_clients->pattern,channel,message);
+            updateClientMemUsageAndBucket(c);
+            receivers++;
+        }
+    }
+    raxDescendStop(&d);
+
+    /* Send to clients listening to channels matching other patterns */
     di = dictGetIterator(server.pubsub_patterns);
     if (di) {
-        channel = getDecodedObject(channel);
         while((de = dictNext(di)) != NULL) {
             robj *pattern = dictGetKey(de);
             list *clients = dictGetVal(de);
@@ -515,9 +665,9 @@ int pubsubPublishMessageInternal(robj *channel, robj *message, pubsubtype type) 
                 receivers++;
             }
         }
-        decrRefCount(channel);
         dictReleaseIterator(di);
     }
+    decrRefCount(channel);
     return receivers;
 }
 
@@ -625,9 +775,15 @@ void pubsubCommand(client *c) {
 "    Return the currently active channels matching a <pattern> (default: '*').",
 "NUMPAT",
 "    Return number of subscriptions to patterns.",
+"NUMPREF",
+"    Return number of subscriptions to patterns that are prefixes only.",
 "NUMSUB [<channel> ...]",
 "    Return the number of subscribers for the specified channels, excluding",
 "    pattern subscriptions(default: no channels).",
+"PATTERNS",
+"    Get the list of non-prefix patterns subscribed by any client",
+"PREFIXES",
+"    Get the list of prefix patterns subscribed by any client",
 "SHARDCHANNELS [<pattern>]",
 "    Return the currently active shard level channels matching a <pattern> (default: '*').",
 "SHARDNUMSUB [<shardchannel> ...]",
@@ -654,7 +810,16 @@ NULL
         }
     } else if (!strcasecmp(c->argv[1]->ptr,"numpat") && c->argc == 2) {
         /* PUBSUB NUMPAT */
-        addReplyLongLong(c,dictSize(server.pubsub_patterns));
+        addReplyLongLong(c,dictSize(server.pubsub_patterns)+raxSize(server.pubsub_prefixes));
+    } else if (!strcasecmp(c->argv[1]->ptr,"numpref") && c->argc == 2) {
+        /* PUBSUB NUMPREF */
+        addReplyLongLong(c,raxSize(server.pubsub_prefixes));
+    } else if (!strcasecmp(c->argv[1]->ptr,"patterns") && c->argc == 2) {
+        /* PUBSUB PATTERNS */
+        patternList(c);
+    } else if (!strcasecmp(c->argv[1]->ptr,"prefixes") && c->argc == 2) {
+        /* PUBSUB PREFIXES */
+        prefixList(c);
     } else if (!strcasecmp(c->argv[1]->ptr,"shardchannels") &&
         (c->argc == 2 || c->argc == 3)) 
     {
@@ -696,6 +861,40 @@ void channelList(client *c, sds pat, dict *pubsub_channels) {
         }
     }
     dictReleaseIterator(di);
+    setDeferredArrayLen(c,replylen,mblen);
+}
+
+void patternList(client *c) {
+    dictIterator *di = dictGetIterator(server.pubsub_patterns);
+    dictEntry *de;
+    long mblen = 0;
+    void *replylen;
+
+    replylen = addReplyDeferredLen(c);
+    while((de = dictNext(di)) != NULL) {
+        robj *pattern = dictGetKey(de);
+        addReplyBulk(c,pattern);
+        mblen++;
+    }
+    dictReleaseIterator(di);
+    setDeferredArrayLen(c,replylen,mblen);
+}
+
+void prefixList(client *c) {
+    long mblen = 0;
+    void *replylen;
+
+    replylen = addReplyDeferredLen(c);
+
+    raxIterator iter;
+    raxStart(&iter,server.pubsub_prefixes);
+    raxSeek(&iter,"^",NULL,0);
+    while(raxNext(&iter)) {
+        prefixclientstype *prefix_clients = (prefixclientstype *)iter.data;
+        addReplyBulk(c,prefix_clients->pattern);
+        mblen++;
+    }
+    raxStop(&iter);
     setDeferredArrayLen(c,replylen,mblen);
 }
 
@@ -746,6 +945,8 @@ void sunsubscribeCommand(client *c) {
 size_t pubsubMemOverhead(client *c) {
     /* PubSub patterns */
     size_t mem = dictMemUsage(c->pubsub_patterns);
+    /* Prefix patterns */
+    mem += raxNumNodes(c->pubsub_prefixes) * sizeof(raxNode);
     /* Global PubSub channels */
     mem += dictMemUsage(c->pubsub_channels);
     /* Sharded PubSub channels */
