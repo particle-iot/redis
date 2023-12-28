@@ -605,8 +605,6 @@ int pubsubPublishMessageInternal(robj *channel, robj *message, pubsubtype type) 
     listNode *ln;
     listIter li;
 
-    channel = getDecodedObject(channel);
-
     /* Send to clients listening for that channel */
     de = dictFind(*type.serverPubSubChannels, channel);
     if (de) {
@@ -629,6 +627,8 @@ int pubsubPublishMessageInternal(robj *channel, robj *message, pubsubtype type) 
     }
 
     /* Send to clients listening to channels matching prefix patterns */
+    channel = getDecodedObject(channel);
+
     raxDescend d;
     raxDescendStart(&d,server.pubsub_prefixes,channel->ptr,sdslen(channel->ptr));
     /* Descend the prefix radix tree to find every level that is a partial match of the channel name. */
